@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prototipo Touch-to-Text</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fuente Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Evitar desplazamiento táctil del navegador al escribir en el lienzo */
+        #inkCanvas {
+            touch-action: none;
+            cursor: crosshair;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Encabezado sencillo -->
+    <header class="bg-white border-b border-slate-200">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                <i data-lucide="pen-tool" class="w-4 h-4"></i>
+            </div>
+            <h1 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight">Prototipo Touch-to-Text</h1>
+        </div>
+    </header>
+
+    <!-- Notificaciones flotantes (reemplazo limpio de alert) -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Contenedor Principal Apilado y Minimalista -->
+    <main class="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
+
+        <!-- SECCIÓN 1: Lienzo Táctil y Barra de Herramientas -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            
+            <!-- Barra de Herramientas Minimalista -->
+            <div class="px-3 py-2.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between gap-2">
+                <span class="text-xs text-slate-500">
+                    <strong id="strokeCountDisplay" class="font-semibold text-slate-700">0</strong> trazos
+                </span>
+
+                <!-- Botones Deshacer y Limpiar -->
+                <div class="flex items-center gap-1.5">
+                    <button type="button" id="undoBtn" disabled class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer">
+                        <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+                        <span>Deshacer</span>
+                    </button>
+                    <button type="button" id="clearCanvasBtn" disabled class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        <span>Limpiar</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lienzo Blanco Liso -->
+            <div class="relative bg-white">
+                <!-- Guía visual cuando el lienzo está vacío -->
+                <div id="canvasPlaceholder" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4 text-center transition-opacity duration-200">
+                    <p class="text-slate-400 text-sm font-medium">Escribe aquí con tu dedo, lápiz o ratón</p>
+                </div>
+
+                <div id="canvasWrapper" class="w-full h-[300px] sm:h-[360px] bg-white">
+                    <canvas id="inkCanvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+
+            <!-- Pie del Lienzo con Botón Principal -->
+            <div class="px-4 py-3 bg-slate-50/80 border-t border-slate-200 flex items-center justify-end">
+                <button type="button" id="convertBtn" class="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span>Convertir a Texto</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- SECCIÓN 2: Único Panel de Resultado -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            <div class="px-4 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="file-text" class="w-4 h-4 text-indigo-600"></i>
+                    <span>Texto Reconocido</span>
+                </h2>
+
+                <!-- Indicador sencillo de carga -->
+                <div id="loadingIndicator" class="hidden items-center gap-2 text-xs font-medium text-indigo-600">
+                    <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Reconociendo...</span>
+                </div>
+            </div>
+
+            <div class="p-4 flex flex-col gap-3">
+                <textarea id="recognizedTextOutput" rows="4" placeholder="El texto convertido y corregido aparecerá aquí..." class="w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 text-slate-800 text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"></textarea>
+
+                <div class="flex justify-end">
+                    <button type="button" id="copyTextBtn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Copiar texto</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // Inicializar iconos
+        lucide.createIcons();
+
+        // =========================================================================
+        // 1. ESTADO Y REFERENCIAS DEL DOM
+        // =========================================================================
+        const state = {
+            strokes: [],
+            currentStroke: null,
+            isDrawing: false,
+            inkColor: '#0F172A',
+            strokeWidth: 4,
+            isProcessing: false
+        };
+
+        const canvas = document.getElementById('inkCanvas');
+        const ctx = canvas.getContext('2d');
+        const canvasWrapper = document.getElementById('canvasWrapper');
+        const canvasPlaceholder = document.getElementById('canvasPlaceholder');
+
+        const undoBtn = document.getElementById('undoBtn');
+        const clearCanvasBtn = document.getElementById('clearCanvasBtn');
+        const convertBtn = document.getElementById('convertBtn');
+        const strokeCountDisplay = document.getElementById('strokeCountDisplay');
+
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const recognizedTextOutput = document.getElementById('recognizedTextOutput');
+        const copyTextBtn = document.getElementById('copyTextBtn');
+
+        // =========================================================================
+        // 2. LIENZO RESPONSIVO (RETINA / HIDPI) Y SUAVIZADO DE TRAZOS
+        // =========================================================================
+        function resizeCanvas() {
+            const rect = canvasWrapper.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+
+            canvas.width = Math.floor(rect.width * dpr);
+            canvas.height = Math.floor(rect.height * dpr);
+
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            redrawAllStrokes();
+        }
+
+        function redrawAllStrokes() {
+            const rect = canvasWrapper.getBoundingClientRect();
+            ctx.clearRect(0, 0, rect.width, rect.height);
+
+            for (const stroke of state.strokes) {
+                renderStroke(ctx, stroke);
+            }
+            if (state.currentStroke) {
+                renderStroke(ctx, state.currentStroke);
+            }
+            updateUI();
+        }
+
+        function renderStroke(targetCtx, stroke) {
+            const pts = stroke.points;
+            if (!pts || pts.length === 0) return;
+
+            targetCtx.save();
+            targetCtx.strokeStyle = stroke.color;
+            targetCtx.fillStyle = stroke.color;
+            targetCtx.lineCap = 'round';
+            targetCtx.lineJoin = 'round';
+
+            if (pts.length === 1) {
+                targetCtx.beginPath();
+                targetCtx.arc(pts[0].x, pts[0].y, stroke.width / 2, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.restore();
+                return;
+            }
+
+            targetCtx.lineWidth = stroke.width;
+            targetCtx.beginPath();
+            targetCtx.moveTo(pts[0].x, pts[0].y);
+
+            // Suavizado mediante curvas cuadráticas entre puntos medios
+            for (let i = 1; i < pts.length - 1; i++) {
+                const midX = (pts[i].x + pts[i + 1].x) / 2;
+                const midY = (pts[i].y + pts[i + 1].y) / 2;
+                targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+            }
+
+            const last = pts[pts.length - 1];
+            targetCtx.lineTo(last.x, last.y);
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        // =========================================================================
+        // 3. CAPTURA DE TINTA DIGITAL (POINTER EVENTS)
+        // =========================================================================
+        function getPointerCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 && e.pointerType === 'mouse') return;
+            e.preventDefault();
+            canvas.setPointerCapture(e.pointerId);
+
+            state.isDrawing = true;
+            state.currentStroke = {
+                color: state.inkColor,
+                width: state.strokeWidth,
+                points: [getPointerCoords(e)]
+            };
+            redrawAllStrokes();
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!state.isDrawing || !state.currentStroke) return;
+            e.preventDefault();
+
+            const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+            for (const ev of events) {
+                state.currentStroke.points.push(getPointerCoords(ev));
+            }
+            redrawAllStrokes();
+        });
+
+        function finishStroke(e) {
+            if (!state.isDrawing) return;
+            if (e && canvas.hasPointerCapture(e.pointerId)) {
+                canvas.releasePointerCapture(e.pointerId);
+            }
+
+            state.isDrawing = false;
+            if (state.currentStroke && state.currentStroke.points.length > 0) {
+                state.strokes.push(state.currentStroke);
+            }
+            state.currentStroke = null;
+            redrawAllStrokes();
+        }
+
+        canvas.addEventListener('pointerup', finishStroke);
+        canvas.addEventListener('pointercancel', finishStroke);
+
+        // =========================================================================
+        // 4. CONTROLES DE LA BARRA DE HERRAMIENTAS
+        // =========================================================================
+        function updateUI() {
+            const hasStrokes = state.strokes.length > 0;
+            canvasPlaceholder.style.opacity = hasStrokes || state.isDrawing ? '0' : '1';
+            undoBtn.disabled = !hasStrokes;
+            clearCanvasBtn.disabled = !hasStrokes;
+            strokeCountDisplay.textContent = state.strokes.length;
+        }
+
+        undoBtn.addEventListener('click', () => {
+            if (state.strokes.length === 0) return;
+            state.strokes.pop();
+            redrawAllStrokes();
+        });
+
+        clearCanvasBtn.addEventListener('click', () => {
+            state.strokes = [];
+            state.currentStroke = null;
+            redrawAllStrokes();
+        });
+
+        // =========================================================================
+        // 5. EXPORTACIÓN SOBRE FONDO BLANCO Y PROCESAMIENTO CON GEMINI API
+        // =========================================================================
+        function getCleanWhiteCanvasBase64() {
+            const rect = canvasWrapper.getBoundingClientRect();
+            const offCanvas = document.createElement('canvas');
+            const scale = 2;
+            offCanvas.width = rect.width * scale;
+            offCanvas.height = rect.height * scale;
+
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.scale(scale, scale);
+
+            // Fondo blanco sólido
+            offCtx.fillStyle = '#FFFFFF';
+            offCtx.fillRect(0, 0, rect.width, rect.height);
+
+            for (const stroke of state.strokes) {
+                renderStroke(offCtx, stroke);
+            }
+
+            return offCanvas.toDataURL('image/png').split(',')[1];
+        }
+
+        async function fetchWithRetry(url, options, maxRetries = 3) {
+            let delay = 1000;
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    if (attempt === maxRetries) throw error;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        async function convertInkToText() {
+            if (state.strokes.length === 0) {
+                showToast('Escribe algo en el lienzo primero.', 'warning');
+                return;
+            }
+            if (state.isProcessing) return;
+
+            state.isProcessing = true;
+            convertBtn.disabled = true;
+            loadingIndicator.classList.remove('hidden');
+            loadingIndicator.classList.add('flex');
+
+            try {
+                const base64Image = getCleanWhiteCanvasBase64();
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const prompt = `Eres un sistema experto en reconocimiento de escritura a mano (Touch-to-Text) en español.
+Analiza la imagen con escritura manuscrita sobre fondo blanco:
+1. Transcribe con precisión lo que está escrito.
+2. Comprende el contexto y corrige errores de ortografía, tildes, separación de palabras (ej. "Aun texto" -> "A un texto", "estubiera" -> "estuviera") y puntuación para que se lea como un texto limpio y natural, sin alterar el sentido original.
+3. Devuelve ÚNICAMENTE el texto final reconocido, sin comillas ni explicaciones. Si no hay escritura legible, responde exactamente: [Sin texto legible]`;
+
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: "image/png",
+                                        data: base64Image
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: 0.2
+                    }
+                };
+
+                const result = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const generatedText = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+                if (!generatedText || generatedText === '[Sin texto legible]') {
+                    showToast('No se detectó texto legible. Intenta escribir más claro.', 'warning');
+                } else {
+                    recognizedTextOutput.value = generatedText;
+                    showToast('Texto reconocido con éxito', 'success');
+                }
+            } catch (error) {
+                showToast('Error al procesar la escritura. Inténtalo de nuevo.', 'error');
+            } finally {
+                state.isProcessing = false;
+                convertBtn.disabled = false;
+                loadingIndicator.classList.add('hidden');
+                loadingIndicator.classList.remove('flex');
+            }
+        }
+
+        convertBtn.addEventListener('click', convertInkToText);
+
+        // =========================================================================
+        // 6. COPIAR TEXTO Y NOTIFICACIONES TOAST
+        // =========================================================================
+        copyTextBtn.addEventListener('click', () => {
+            const text = recognizedTextOutput.value;
+            if (!text.trim()) {
+                showToast('No hay texto para copiar.', 'warning');
+                return;
+            }
+            recognizedTextOutput.select();
+            recognizedTextOutput.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showToast('Texto copiado al portapapeles', 'success');
+            } catch (err) {
+                showToast('No se pudo copiar el texto.', 'error');
+            }
+            window.getSelection().removeAllRanges();
+        });
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+
+            const styles = {
+                success: 'bg-emerald-900 text-white border-emerald-700',
+                error: 'bg-rose-900 text-white border-rose-700',
+                warning: 'bg-amber-900 text-white border-amber-700',
+                info: 'bg-slate-900 text-white border-slate-700'
+            };
+
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-md text-xs font-medium transition-all duration-300 translate-y-2 opacity-0 ${styles[type] || styles.info}`;
+            toast.textContent = message;
+
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 2500);
+        }
+
+        // Inicialización
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('load', resizeCanvas);
+    </script>
+</body>
+</html>
