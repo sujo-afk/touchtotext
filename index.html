@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prototipo Touch-to-Text</title>
-    <!-- Tailwind CSS -->
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Fuente Inter -->
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Lucide Icons -->
+ 
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
         tailwind.config = {
@@ -24,7 +24,7 @@
         }
     </script>
     <style>
-        /* Evitar desplazamiento táctil del navegador al escribir en el lienzo */
+
         #inkCanvas {
             touch-action: none;
             cursor: crosshair;
@@ -33,7 +33,7 @@
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
 
-    <!-- Encabezado sencillo -->
+
     <header class="bg-white border-b border-slate-200">
         <div class="max-w-3xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-2.5">
             <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
@@ -43,22 +43,20 @@
         </div>
     </header>
 
-    <!-- Notificaciones flotantes (reemplazo limpio de alert) -->
+
     <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    <!-- Contenedor Principal Apilado y Minimalista -->
     <main class="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
 
-        <!-- SECCIÓN 1: Lienzo Táctil y Barra de Herramientas -->
+
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             
-            <!-- Barra de Herramientas Minimalista -->
+
             <div class="px-3 py-2.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between gap-2">
                 <span class="text-xs text-slate-500">
                     <strong id="strokeCountDisplay" class="font-semibold text-slate-700">0</strong> trazos
                 </span>
 
-                <!-- Botones Deshacer y Limpiar -->
                 <div class="flex items-center gap-1.5">
                     <button type="button" id="undoBtn" disabled class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer">
                         <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
@@ -71,9 +69,7 @@
                 </div>
             </div>
 
-            <!-- Lienzo Blanco Liso -->
             <div class="relative bg-white">
-                <!-- Guía visual cuando el lienzo está vacío -->
                 <div id="canvasPlaceholder" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4 text-center transition-opacity duration-200">
                     <p class="text-slate-400 text-sm font-medium">Escribe aquí con tu dedo, lápiz o ratón</p>
                 </div>
@@ -83,7 +79,6 @@
                 </div>
             </div>
 
-            <!-- Pie del Lienzo con Botón Principal -->
             <div class="px-4 py-3 bg-slate-50/80 border-t border-slate-200 flex items-center justify-end">
                 <button type="button" id="convertBtn" class="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="sparkles" class="w-4 h-4"></i>
@@ -92,7 +87,6 @@
             </div>
         </section>
 
-        <!-- SECCIÓN 2: Único Panel de Resultado -->
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div class="px-4 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
@@ -100,7 +94,6 @@
                     <span>Texto Reconocido</span>
                 </h2>
 
-                <!-- Indicador sencillo de carga -->
                 <div id="loadingIndicator" class="hidden items-center gap-2 text-xs font-medium text-indigo-600">
                     <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -125,12 +118,9 @@
     </main>
 
     <script>
-        // Inicializar iconos
+
         lucide.createIcons();
 
-        // =========================================================================
-        // 1. ESTADO Y REFERENCIAS DEL DOM
-        // =========================================================================
         const state = {
             strokes: [],
             currentStroke: null,
@@ -154,9 +144,6 @@
         const recognizedTextOutput = document.getElementById('recognizedTextOutput');
         const copyTextBtn = document.getElementById('copyTextBtn');
 
-        // =========================================================================
-        // 2. LIENZO RESPONSIVO (RETINA / HIDPI) Y SUAVIZADO DE TRAZOS
-        // =========================================================================
         function resizeCanvas() {
             const rect = canvasWrapper.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
@@ -203,7 +190,6 @@
             targetCtx.beginPath();
             targetCtx.moveTo(pts[0].x, pts[0].y);
 
-            // Suavizado mediante curvas cuadráticas entre puntos medios
             for (let i = 1; i < pts.length - 1; i++) {
                 const midX = (pts[i].x + pts[i + 1].x) / 2;
                 const midY = (pts[i].y + pts[i + 1].y) / 2;
@@ -216,9 +202,6 @@
             targetCtx.restore();
         }
 
-        // =========================================================================
-        // 3. CAPTURA DE TINTA DIGITAL (POINTER EVENTS)
-        // =========================================================================
         function getPointerCoords(e) {
             const rect = canvas.getBoundingClientRect();
             return {
@@ -269,9 +252,6 @@
         canvas.addEventListener('pointerup', finishStroke);
         canvas.addEventListener('pointercancel', finishStroke);
 
-        // =========================================================================
-        // 4. CONTROLES DE LA BARRA DE HERRAMIENTAS
-        // =========================================================================
         function updateUI() {
             const hasStrokes = state.strokes.length > 0;
             canvasPlaceholder.style.opacity = hasStrokes || state.isDrawing ? '0' : '1';
@@ -292,9 +272,6 @@
             redrawAllStrokes();
         });
 
-        // =========================================================================
-        // 5. EXPORTACIÓN SOBRE FONDO BLANCO Y PROCESAMIENTO CON GEMINI API
-        // =========================================================================
         function getCleanWhiteCanvasBase64() {
             const rect = canvasWrapper.getBoundingClientRect();
             const offCanvas = document.createElement('canvas');
@@ -305,7 +282,6 @@
             const offCtx = offCanvas.getContext('2d');
             offCtx.scale(scale, scale);
 
-            // Fondo blanco sólido
             offCtx.fillStyle = '#FFFFFF';
             offCtx.fillRect(0, 0, rect.width, rect.height);
 
@@ -402,9 +378,6 @@ Analiza la imagen con escritura manuscrita sobre fondo blanco:
 
         convertBtn.addEventListener('click', convertInkToText);
 
-        // =========================================================================
-        // 6. COPIAR TEXTO Y NOTIFICACIONES TOAST
-        // =========================================================================
         copyTextBtn.addEventListener('click', () => {
             const text = recognizedTextOutput.value;
             if (!text.trim()) {
@@ -447,7 +420,6 @@ Analiza la imagen con escritura manuscrita sobre fondo blanco:
             }, 2500);
         }
 
-        // Inicialización
         window.addEventListener('resize', resizeCanvas);
         window.addEventListener('load', resizeCanvas);
     </script>
