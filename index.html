@@ -6,11 +6,12 @@
     <title>Prototipo Touch-to-Text</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
- 
+
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
         tailwind.config = {
@@ -24,7 +25,6 @@
         }
     </script>
     <style>
-
         #inkCanvas {
             touch-action: none;
             cursor: crosshair;
@@ -32,7 +32,6 @@
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
-
 
     <header class="bg-white border-b border-slate-200">
         <div class="max-w-3xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-2.5">
@@ -43,14 +42,11 @@
         </div>
     </header>
 
-
     <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <main class="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
 
-
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            
 
             <div class="px-3 py-2.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between gap-2">
                 <span class="text-xs text-slate-500">
@@ -99,12 +95,12 @@
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Reconociendo...</span>
+                    <span id="loadingText">Reconociendo...</span>
                 </div>
             </div>
 
             <div class="p-4 flex flex-col gap-3">
-                <textarea id="recognizedTextOutput" rows="4" placeholder="El texto convertido y corregido aparecerá aquí..." class="w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 text-slate-800 text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"></textarea>
+                <textarea id="recognizedTextOutput" rows="4" placeholder="El texto convertido aparecerá aquí..." class="w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 text-slate-800 text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"></textarea>
 
                 <div class="flex justify-end">
                     <button type="button" id="copyTextBtn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer">
@@ -118,7 +114,6 @@
     </main>
 
     <script>
-
         lucide.createIcons();
 
         const state = {
@@ -141,6 +136,7 @@
         const strokeCountDisplay = document.getElementById('strokeCountDisplay');
 
         const loadingIndicator = document.getElementById('loadingIndicator');
+        const loadingText = document.getElementById('loadingText');
         const recognizedTextOutput = document.getElementById('recognizedTextOutput');
         const copyTextBtn = document.getElementById('copyTextBtn');
 
@@ -272,41 +268,47 @@
             redrawAllStrokes();
         });
 
-        function getCleanWhiteCanvasBase64() {
-            const rect = canvasWrapper.getBoundingClientRect();
-            const offCanvas = document.createElement('canvas');
-            const scale = 2;
-            offCanvas.width = rect.width * scale;
-            offCanvas.height = rect.height * scale;
-
-            const offCtx = offCanvas.getContext('2d');
-            offCtx.scale(scale, scale);
-
-            offCtx.fillStyle = '#FFFFFF';
-            offCtx.fillRect(0, 0, rect.width, rect.height);
+        function getPreparedOCRCanvas() {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
             for (const stroke of state.strokes) {
-                renderStroke(offCtx, stroke);
-            }
-
-            return offCanvas.toDataURL('image/png').split(',')[1];
-        }
-
-        async function fetchWithRetry(url, options, maxRetries = 3) {
-            let delay = 1000;
-            for (let attempt = 0; attempt <= maxRetries; attempt++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return await response.json();
-                } catch (error) {
-                    if (attempt === maxRetries) throw error;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    delay *= 2;
+                for (const pt of stroke.points) {
+                    if (pt.x < minX) minX = pt.x;
+                    if (pt.y < minY) minY = pt.y;
+                    if (pt.x > maxX) maxX = pt.x;
+                    if (pt.y > maxY) maxY = pt.y;
                 }
             }
+
+            const pad = 32;
+            const cropX = Math.max(0, minX - pad);
+            const cropY = Math.max(0, minY - pad);
+            const cropW = Math.max(40, (maxX - minX) + pad * 2);
+            const cropH = Math.max(40, (maxY - minY) + pad * 2);
+
+            const scale = 2;
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = Math.ceil(cropW * scale);
+            offCanvas.height = Math.ceil(cropH * scale);
+
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.fillStyle = '#FFFFFF';
+            offCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+
+            offCtx.save();
+            offCtx.scale(scale, scale);
+            offCtx.translate(-cropX, -cropY);
+
+            for (const stroke of state.strokes) {
+                renderStroke(offCtx, {
+                    ...stroke,
+                    color: '#000000',
+                    width: Math.max(stroke.width, 5)
+                });
+            }
+
+            offCtx.restore();
+            return offCanvas;
         }
 
         async function convertInkToText() {
@@ -316,54 +318,36 @@
             }
             if (state.isProcessing) return;
 
+            if (typeof Tesseract === 'undefined') {
+                showToast('No se pudo cargar Tesseract.js. Revisa tu conexión.', 'error');
+                return;
+            }
+
             state.isProcessing = true;
             convertBtn.disabled = true;
+            loadingText.textContent = 'Reconociendo...';
             loadingIndicator.classList.remove('hidden');
             loadingIndicator.classList.add('flex');
 
             try {
-                const base64Image = getCleanWhiteCanvasBase64();
-                const apiKey = "";
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                const ocrCanvas = getPreparedOCRCanvas();
 
-                const prompt = `Eres un sistema experto en reconocimiento de escritura a mano (Touch-to-Text) en español.
-Analiza la imagen con escritura manuscrita sobre fondo blanco:
-1. Transcribe con precisión lo que está escrito.
-2. Comprende el contexto y corrige errores de ortografía, tildes, separación de palabras (ej. "Aun texto" -> "A un texto", "estubiera" -> "estuviera") y puntuación para que se lea como un texto limpio y natural, sin alterar el sentido original.
-3. Devuelve ÚNICAMENTE el texto final reconocido, sin comillas ni explicaciones. Si no hay escritura legible, responde exactamente: [Sin texto legible]`;
-
-                const payload = {
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [
-                                { text: prompt },
-                                {
-                                    inlineData: {
-                                        mimeType: "image/png",
-                                        data: base64Image
-                                    }
-                                }
-                            ]
+                const { data } = await Tesseract.recognize(ocrCanvas, 'spa', {
+                    logger: (m) => {
+                        if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+                            loadingText.textContent = `Reconociendo ${Math.round(m.progress * 100)}%...`;
                         }
-                    ],
-                    generationConfig: {
-                        temperature: 0.2
                     }
-                };
-
-                const result = await fetchWithRetry(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
                 });
 
-                const generatedText = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                const cleanedText = (data?.text || '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
 
-                if (!generatedText || generatedText === '[Sin texto legible]') {
-                    showToast('No se detectó texto legible. Intenta escribir más claro.', 'warning');
+                if (!cleanedText) {
+                    showToast('No se detectó texto legible. Intenta escribir en letra más clara.', 'warning');
                 } else {
-                    recognizedTextOutput.value = generatedText;
+                    recognizedTextOutput.value = cleanedText;
                     showToast('Texto reconocido con éxito', 'success');
                 }
             } catch (error) {
